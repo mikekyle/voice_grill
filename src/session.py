@@ -7,6 +7,7 @@ from typing import AsyncIterator
 
 from google import genai
 from google.genai import types
+from google.genai.live import AsyncSession
 
 from src.prompts import build_prompt
 
@@ -18,20 +19,30 @@ def build_system_prompt(topic: str | None = None, grill_mode: str | None = None)
 class GeminiLiveSession:
     """Manages the WebSocket connection to Gemini Live."""
 
-    MODEL = "gemini-live-2.5-flash-preview"
+    # Preview models live on v1alpha, not v1beta (the SDK default)
+    MODEL = "gemini-3.1-flash-live-preview"
+    API_VERSION = "v1alpha"
 
     def __init__(self, api_key: str | None = None) -> None:
         self.api_key = api_key or os.getenv("GEMINI_API_KEY")
         if not self.api_key:
             raise RuntimeError("GEMINI_API_KEY not set")
-        self._session: genai.live.AsyncSession | None = None
+        self._session: AsyncSession | None = None
         self._cm = None
 
     async def connect(self, system_prompt: str) -> None:
-        client = genai.Client(api_key=self.api_key)
+        client = genai.Client(
+            api_key=self.api_key,
+            http_options=types.HttpOptions(api_version=self.API_VERSION),
+        )
         config = types.LiveConnectConfig(
             response_modalities=["AUDIO"],
             system_instruction=system_prompt,
+            speech_config=types.SpeechConfig(
+                voice_config=types.VoiceConfig(
+                    prebuilt_voice_config=types.PrebuiltVoiceConfig(voice_name="Puck")
+                )
+            ),
         )
         self._cm = client.aio.live.connect(model=self.MODEL, config=config)
         self._session = await self._cm.__aenter__()

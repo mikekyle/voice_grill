@@ -12,7 +12,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--topic", type=str, help="Free-form topic to discuss")
     parser.add_argument(
         "--grill-mode",
-        choices=["cv-review", "project-debrief", "requirements-gathering"],
+        choices=["cv-review", "project-debrief", "requirements-gathering", "cheese-jokes"],
         help="Structured elicitation mode",
     )
     parser.add_argument(
