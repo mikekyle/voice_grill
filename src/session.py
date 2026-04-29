@@ -49,7 +49,7 @@ class GeminiLiveSession:
 
     async def send_audio(self, pcm16_chunk: bytes) -> None:
         await self._session.send_realtime_input(
-            media=types.Blob(data=pcm16_chunk, mime_type="audio/pcm;rate=16000")
+            audio=types.Blob(data=pcm16_chunk, mime_type="audio/pcm;rate=16000")
         )
 
     async def receive_audio(self) -> AsyncIterator[bytes]:
