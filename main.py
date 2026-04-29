@@ -32,6 +32,11 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Print available audio devices and exit",
     )
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="Print audio chunk sizes and text responses for debugging",
+    )
     return parser.parse_args()
 
 
@@ -96,7 +101,9 @@ async def main() -> None:
             audio_in.stop()
 
     async def session_to_speaker() -> None:
-        async for chunk in session.receive_audio():
+        async for chunk in session.receive_audio(debug=args.debug):
+            if args.debug:
+                print(f"[debug] enqueuing {len(chunk)} bytes to speaker")
             audio_out.enqueue(chunk)
 
     try:

@@ -52,11 +52,16 @@ class GeminiLiveSession:
             audio=types.Blob(data=pcm16_chunk, mime_type="audio/pcm;rate=16000")
         )
 
-    async def receive_audio(self) -> AsyncIterator[bytes]:
+    async def receive_audio(self, debug: bool = False) -> AsyncIterator[bytes]:
         try:
-            async for response in self._session.receive():
-                if response.data:
-                    yield response.data
+            while True:
+                async for response in self._session.receive():
+                    if response.data:
+                        if debug:
+                            print(f"[debug] audio chunk: {len(response.data)} bytes")
+                        yield response.data
+                    elif debug and response.text:
+                        print(f"[debug] text: {response.text!r}")
         except Exception as e:
             print(f"\nSession interrupted: {e}")
             return
