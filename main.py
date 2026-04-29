@@ -35,7 +35,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--debug",
         action="store_true",
-        help="Print audio chunk sizes and text responses for debugging",
+        help="Print audio chunk sizes and interruption signals for debugging",
     )
     return parser.parse_args()
 
@@ -51,13 +51,11 @@ async def main() -> None:
         print(sounddevice.query_devices())
         return
 
-    # Validate API key before opening anything
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
         print("Error: GEMINI_API_KEY is not set. Copy .env.example to .env and add your key.")
         raise SystemExit(1)
 
-    # Validate audio device early
     if args.device is not None:
         import sounddevice
         try:
@@ -77,40 +75,56 @@ async def main() -> None:
     from src.transcript import save as save_transcript
 
     system_prompt = build_prompt(topic=args.topic, grill_mode=args.grill_mode)
-    session = GeminiLiveSession(api_key=api_key)
-    audio_out = AudioOutput(device=args.device)
     transcript: list[str] = []
 
-    async def mic_to_session() -> None:
-        loop = asyncio.get_event_loop()
-        chunk_queue: asyncio.Queue[bytes] = asyncio.Queue()
-
-        def on_chunk(data: bytes) -> None:
-            loop.call_soon_threadsafe(chunk_queue.put_nowait, data)
-
-        audio_in = AudioInput(on_chunk=on_chunk, device=args.device)
-        audio_in.start()
-        try:
-            while not audio_in._stop_event.is_set():
-                try:
-                    chunk = await asyncio.wait_for(chunk_queue.get(), timeout=1.0)
-                except asyncio.TimeoutError:
-                    continue
-                # Discard mic audio while model is speaking to prevent echo
-                if session.model_speaking.is_set():
-                    continue
-                await session.send_audio(chunk)
-        finally:
-            audio_in.stop()
-
-    async def session_to_speaker() -> None:
-        async for chunk in session.receive_audio(debug=args.debug):
-            if args.debug:
-                print(f"[debug] enqueuing {len(chunk)} bytes to speaker")
-            audio_out.enqueue(chunk)
-
     try:
-        await session.connect(system_prompt)
+        async with GeminiLiveSession(api_key=api_key, system_prompt=system_prompt) as session:
+            audio_out = AudioOutput(device=args.device)
+            audio_out.start()
+            print("Session started. Speak into your mic. Press Ctrl+C to stop.")
+
+            async def mic_to_session() -> None:
+                loop = asyncio.get_event_loop()
+                chunk_queue: asyncio.Queue[bytes] = asyncio.Queue()
+
+                def on_chunk(data: bytes) -> None:
+                    loop.call_soon_threadsafe(chunk_queue.put_nowait, data)
+
+                audio_in = AudioInput(on_chunk=on_chunk, device=args.device)
+                audio_in.start()
+                try:
+                    while not audio_in._stop_event.is_set():
+                        try:
+                            chunk = await asyncio.wait_for(chunk_queue.get(), timeout=1.0)
+                        except asyncio.TimeoutError:
+                            continue
+                        await session.send_audio(chunk)
+                finally:
+                    audio_in.stop()
+
+            async def session_to_speaker() -> None:
+                async for chunk in session.receive_audio(debug=args.debug):
+                    if session.interrupted.is_set():
+                        # Model was interrupted — discard buffered audio so it
+                        # stops playing immediately and the user's new input is heard.
+                        audio_out.clear()
+                        session.interrupted.clear()
+                        if args.debug:
+                            print("[debug] audio queue flushed")
+                    audio_out.enqueue(chunk)
+
+            try:
+                await asyncio.gather(mic_to_session(), session_to_speaker())
+            except (KeyboardInterrupt, asyncio.CancelledError):
+                pass
+            finally:
+                audio_out.stop()
+                if transcript:
+                    path = save_transcript(transcript, args.topic, args.grill_mode, args.transcript_dir)
+                    print(f"Transcript saved: {path}")
+                else:
+                    print("\nSession ended.")
+
     except Exception as e:
         msg = str(e).lower()
         if "api_key" in msg or "permission" in msg or "credential" in msg or "401" in msg or "403" in msg:
@@ -118,22 +132,6 @@ async def main() -> None:
         else:
             print(f"Error: could not connect to Gemini Live — {e}")
         raise SystemExit(1)
-
-    audio_out.start()
-    print("Session started. Speak into your mic. Press Ctrl+C to stop.")
-
-    try:
-        await asyncio.gather(mic_to_session(), session_to_speaker())
-    except (KeyboardInterrupt, asyncio.CancelledError):
-        pass
-    finally:
-        await session.close()
-        audio_out.stop()
-        if transcript:
-            path = save_transcript(transcript, args.topic, args.grill_mode, args.transcript_dir)
-            print(f"Transcript saved: {path}")
-        else:
-            print("\nSession ended.")
 
 
 if __name__ == "__main__":

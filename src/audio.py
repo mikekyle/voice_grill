@@ -76,6 +76,14 @@ class AudioOutput:
     def enqueue(self, pcm16_chunk: bytes) -> None:
         self._queue.put(pcm16_chunk)
 
+    def clear(self) -> None:
+        """Flush queued audio — call immediately when model is interrupted."""
+        while not self._queue.empty():
+            try:
+                self._queue.get_nowait()
+            except queue.Empty:
+                break
+
     def stop(self) -> None:
         self._queue.put(None)
         if self._thread:
