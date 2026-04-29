@@ -1,0 +1,12 @@
+[project]
+name = "voice-grill"
+version = "0.1.0"
+description = "Local CLI audio-to-audio sessions with Gemini Live"
+requires-python = ">=3.11"
+dependencies = [
+    "python-dotenv>=1.0.0",
+    "google-genai>=1.0.0",
+    "sounddevice>=0.5.0",
+    "numpy>=1.26.0",
+    "rich>=14.0.0",
+]
