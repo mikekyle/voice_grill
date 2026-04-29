@@ -13,7 +13,7 @@ import sounddevice
 # Gemini Live audio specs
 INPUT_SAMPLE_RATE = 16_000   # Hz, PCM16
 OUTPUT_SAMPLE_RATE = 24_000  # Hz, PCM16
-CHUNK_DURATION_MS = 100      # ms per capture chunk
+CHUNK_DURATION_MS = 20       # ms per capture chunk
 
 
 def input_chunk_size() -> int:

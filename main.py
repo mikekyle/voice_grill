@@ -94,9 +94,12 @@ async def main() -> None:
             while not audio_in._stop_event.is_set():
                 try:
                     chunk = await asyncio.wait_for(chunk_queue.get(), timeout=1.0)
-                    await session.send_audio(chunk)
                 except asyncio.TimeoutError:
                     continue
+                # Discard mic audio while model is speaking to prevent echo
+                if session.model_speaking.is_set():
+                    continue
+                await session.send_audio(chunk)
         finally:
             audio_in.stop()
 

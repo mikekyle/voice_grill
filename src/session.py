@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 from typing import AsyncIterator
 
@@ -29,6 +30,9 @@ class GeminiLiveSession:
             raise RuntimeError("GEMINI_API_KEY not set")
         self._session: AsyncSession | None = None
         self._cm = None
+        # Set while the model is producing audio; cleared on turn_complete.
+        # Used by the mic loop to avoid sending echo back to the model.
+        self.model_speaking = asyncio.Event()
 
     async def connect(self, system_prompt: str) -> None:
         client = genai.Client(
@@ -57,11 +61,15 @@ class GeminiLiveSession:
             while True:
                 async for response in self._session.receive():
                     if response.data:
+                        if not self.model_speaking.is_set():
+                            self.model_speaking.set()
                         if debug:
                             print(f"[debug] audio chunk: {len(response.data)} bytes")
                         yield response.data
                     elif debug and response.text:
                         print(f"[debug] text: {response.text!r}")
+                # turn_complete — model finished speaking, mic can reopen
+                self.model_speaking.clear()
         except Exception as e:
             print(f"\nSession interrupted: {e}")
             return
